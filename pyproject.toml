@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparsefedmoe"
+version = "0.1.0"
+description = "Communication-efficient federated fine-tuning of MoE LLMs via activation-aware sparse communication (NVFlare)."
+requires-python = ">=3.10,<3.11"
+readme = "README.md"
+authors = [{ name = "SparseFedMoE contributors" }]
+dependencies = [
+    "nvflare>=2.4,<2.5",
+    "torch>=2.1.0",
+    "transformers>=4.40.0",
+    "peft>=0.10.0",
+    "datasets>=2.18.0",
+    "accelerate>=0.28.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-xdist>=3.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
