@@ -2,3 +2,7 @@ data/
 jobs/
 __pycache__/
 .claude/
+.venv/
+.DS_Store
+*/__pycache__/
+*/.pytest_cache/
