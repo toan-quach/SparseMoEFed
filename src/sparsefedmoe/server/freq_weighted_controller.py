@@ -16,12 +16,13 @@ Pure-numpy math — does not touch torch.
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from nvflare.apis.fl_context import FLContext
 from nvflare.app_common.abstract.fl_model import FLModel
 from nvflare.app_common.workflows.model_controller import ModelController
 
@@ -45,7 +46,9 @@ class FreqWeightedFedAvg(ModelController):
         persistor_id: str = "persistor",
         config: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__()
+        # Clients build their own model and seed the first round's params, so
+        # the persistor's initial state is empty by design — opt in to that.
+        super().__init__(allow_empty_global_weights=True)
         self.num_clients = num_clients
         self.num_rounds = num_rounds
         self.min_clients = min_clients
@@ -66,9 +69,10 @@ class FreqWeightedFedAvg(ModelController):
         # We reset per-round counters each round and keep running totals.
         self.cumulative_uplink_bytes: int = 0
         self.cumulative_downlink_bytes: int = 0
+        self.round_metrics: List[Dict[str, Any]] = []
 
     # ── Main control flow ───────────────────────────────────────────────────
-    def run(self, fl_ctx: FLContext):  # type: ignore[override]
+    def run(self):
         model = self.load_model()
         logger.info("Loaded initial global model: %d params", len(model.params))
 
@@ -94,16 +98,24 @@ class FreqWeightedFedAvg(ModelController):
             round_downlink = downlink_per_client * self.num_clients
             self.cumulative_downlink_bytes += round_downlink
 
-            results = self.send_model_and_wait(
+            result_list = self.send_model_and_wait(
                 targets=None, data=model, min_responses=self.min_clients,
             )
-            if not results or len(results) < self.min_clients:
-                got = len(results) if results else 0
+            if not result_list or len(result_list) < self.min_clients:
+                got = len(result_list) if result_list else 0
                 logger.warning(
                     "Round %d: only %d/%d responses; skipping aggregation",
                     round_idx, got, self.min_clients,
                 )
                 continue
+
+            # Re-key by client name so the aggregation code below — which was
+            # written when send_model_and_wait returned Dict[str, FLModel] —
+            # keeps working under 2.6's List[FLModel] return contract.
+            results: Dict[str, FLModel] = {}
+            for i, r in enumerate(result_list):
+                cname = (r.meta or {}).get("client_name") or f"client_{i}"
+                results[cname] = r
 
             aggregated = self._aggregate(results, model.params)
             model.params = aggregated
@@ -145,6 +157,25 @@ class FreqWeightedFedAvg(ModelController):
                 model.meta["eval_loss"] = eval_summary["eval_loss"]
                 model.meta["perplexity"] = eval_summary["perplexity"]
 
+            # ── Record round metrics ──
+            round_record: Dict[str, Any] = {
+                "round": round_idx + 1,
+                "num_clients": len(results),
+                "round_uplink_bytes": int(round_uplink),
+                "round_downlink_bytes": int(round_downlink),
+                "cumulative_uplink_bytes": int(self.cumulative_uplink_bytes),
+                "cumulative_downlink_bytes": int(self.cumulative_downlink_bytes),
+            }
+            if eval_summary is not None:
+                round_record["eval_loss"] = eval_summary["eval_loss"]
+                round_record["perplexity"] = eval_summary["perplexity"]
+                round_record["eval_tokens"] = eval_summary["tokens"]
+                round_record["eval_clients"] = eval_summary["clients"]
+            if self.floor_monitor is not None:
+                fl = self.floor_monitor.get_floor_tier_list()
+                round_record["floor_protected_experts"] = len(fl) if fl else 0
+            self.round_metrics.append(round_record)
+
             # Update floor monitor from this round's profiles.
             if self.floor_monitor is not None and self.client_profiles:
                 self.floor_monitor.update(self.client_profiles)
@@ -154,6 +185,7 @@ class FreqWeightedFedAvg(ModelController):
                 self.save_model(model)
 
         self.save_model(model)
+        self._save_metrics_report()
         logger.info("Training complete.")
 
     # ── Aggregation ─────────────────────────────────────────────────────────
@@ -164,10 +196,17 @@ class FreqWeightedFedAvg(ModelController):
     ) -> Dict[str, np.ndarray]:
         client_meta = self._collect_meta(results)
 
-        # Classify every param present in *some* client's update.
+        # Classify every param present in *some* client's update OR in the
+        # current global model.  Without the global-param union, an expert
+        # skipped by every client in a round silently disappears from the
+        # global model instead of being preserved unchanged.
+        # TODO: revisit whether universally-skipped experts should decay or
+        #       be pruned rather than preserved indefinitely.
         all_names: set[str] = set()
         for r in results.values():
             all_names.update(r.params.keys())
+        if global_params:
+            all_names.update(global_params.keys())
 
         by_role: Dict[str, list[str]] = {"expert": [], "router": [], "shared": []}
         for name in all_names:
@@ -212,8 +251,9 @@ class FreqWeightedFedAvg(ModelController):
                 if name in global_params:
                     out[name] = global_params[name]
                 continue
+            
             sub = {c: router_weights.get(c, 0.0) for c in contributor_names}
-            s = sum(sub.values()) or 1.0
+            s = sum(sub.values()) or 1.0    # Avoid division by zero if all contributors have zero router weight.
             sub = {c: v / s for c, v in sub.items()}
             weighted = self._weighted_sum(results, name, sub)
             if weighted is not None:
@@ -230,9 +270,10 @@ class FreqWeightedFedAvg(ModelController):
                 if name in client_meta[client_name]["skipped_experts"]:
                     continue
                 freq = 0.0
-                af = client_meta[client_name]["activation_freq"]
-                if af is not None and layer_idx is not None:
-                    freq = float(af[layer_idx, expert_idx])
+                if self.cfg.use_freq_weighted_experts:
+                    af = client_meta[client_name]["activation_freq"]
+                    if af is not None and layer_idx is not None:
+                        freq = float(af[layer_idx, expert_idx])
                 contributions.append((client_name, np.asarray(result.params[name], dtype=np.float32), freq))
 
             if not contributions:
@@ -241,16 +282,45 @@ class FreqWeightedFedAvg(ModelController):
                     floor_count += 1
                 continue
 
-            # NOTE: ??
-            total_freq = sum(f for _, _, f in contributions)
-            if total_freq < 1e-10:
-                stacked = np.stack([p for _, p, _ in contributions], axis=0)
-                out[name] = stacked.mean(axis=0)
-            else:
+            if not self.cfg.use_freq_weighted_experts:
+                contrib_tokens = sum(
+                    max(client_meta[c]["total_tokens"], 1) for c, _, _ in contributions
+                )
                 agg = np.zeros_like(contributions[0][1])
-                for _c, p, f in contributions:
-                    agg += (f / total_freq) * p
+                for c, p, _ in contributions:
+                    agg += (max(client_meta[c]["total_tokens"], 1) / contrib_tokens) * p
                 out[name] = agg
+            else:
+                total_freq = sum(f for _, _, f in contributions)
+                if total_freq < 1e-10:
+                    # The problem: Expert aggregation (section 3.3) weights each client's 
+                    # contribution by how frequently that client activated the expert. If 
+                    # an expert was activated by multiple clients but at vanishingly small 
+                    # frequencies (all near zero - possible in early rounds before routing 
+                    # stabilizes), total_freq ≈ 0 and dividing f / total_freq would produce 
+                    # inf weights.
+                    # 
+                    # Without the fix: One client whose frequency is 1e-15 while others are 
+                    # 1e-16 would get essentially 100% of the weight — an arbitrary winner 
+                    # determined by floating-point noise. The aggregated expert weights would 
+                    # be just one client's update, not a meaningful combination.
+                    # 
+                    # The fallback: Unweighted mean. When no client has a meaningful frequency 
+                    # signal for this expert, all contributions are treated equally. This is 
+                    # the honest answer: "we don't have enough activation data to rank these 
+                    # contributions, so average them uniformly." The 1e-10 threshold is generous,
+                    # any total frequency above it reflects real activation signal.
+                    # 
+                    # Contrast with decision #1: Decision #1 injects a floor to keep a client alive; 
+                    # this one switches aggregation strategy entirely when the weighting signal is too weak.
+
+                    stacked = np.stack([p for _, p, _ in contributions], axis=0)
+                    out[name] = stacked.mean(axis=0)
+                else:
+                    agg = np.zeros_like(contributions[0][1])
+                    for _c, p, f in contributions:
+                        agg += (f / total_freq) * p
+                    out[name] = agg
 
         logger.info(
             "Expert aggregation: %d updated, %d kept from global (no contributors)",
@@ -279,20 +349,92 @@ class FreqWeightedFedAvg(ModelController):
             }
         return per_client
 
+    def _save_metrics_report(self):
+        if not self.round_metrics:
+            return
+
+        completed = len(self.round_metrics)
+        total_uplink = self.cumulative_uplink_bytes
+        total_downlink = self.cumulative_downlink_bytes
+        total_comm = total_uplink + total_downlink
+
+        summary: Dict[str, Any] = {
+            "rounds_completed": completed,
+            "total_uplink_bytes": total_uplink,
+            "total_downlink_bytes": total_downlink,
+            "total_comm_bytes": total_comm,
+            "avg_uplink_per_round": total_uplink / max(completed, 1),
+            "avg_downlink_per_round": total_downlink / max(completed, 1),
+        }
+
+        eval_rounds = [r for r in self.round_metrics if "eval_loss" in r]
+        if eval_rounds:
+            best = min(eval_rounds, key=lambda r: r["eval_loss"])
+            final = eval_rounds[-1]
+            summary["best_eval_loss"] = best["eval_loss"]
+            summary["best_perplexity"] = best["perplexity"]
+            summary["best_round"] = best["round"]
+            summary["final_eval_loss"] = final["eval_loss"]
+            summary["final_perplexity"] = final["perplexity"]
+
+        report = {"summary": summary, "rounds": self.round_metrics}
+
+        logger.info(
+            "══ Training Summary ══\n"
+            "  Rounds completed:   %d\n"
+            "  Total uplink:       %s\n"
+            "  Total downlink:     %s\n"
+            "  Total comm:         %s\n"
+            "  Avg uplink/round:   %s\n"
+            "  Avg downlink/round: %s",
+            completed,
+            _fmt_bytes(total_uplink),
+            _fmt_bytes(total_downlink),
+            _fmt_bytes(total_comm),
+            _fmt_bytes(int(summary["avg_uplink_per_round"])),
+            _fmt_bytes(int(summary["avg_downlink_per_round"])),
+        )
+        if eval_rounds:
+            logger.info(
+                "  Best eval loss:     %.4f (ppl=%.2f, round %d)\n"
+                "  Final eval loss:    %.4f (ppl=%.2f)",
+                summary["best_eval_loss"], summary["best_perplexity"],
+                summary["best_round"],
+                summary["final_eval_loss"], summary["final_perplexity"],
+            )
+
+        try:
+            workspace = self.engine.get_workspace()
+            run_dir = workspace.get_run_dir(self.fl_ctx.get_job_id())
+            metrics_path = os.path.join(run_dir, "metrics.json")
+        except Exception:
+            metrics_path = "metrics.json"
+        try:
+            with open(metrics_path, "w") as f:
+                json.dump(report, f, indent=2)
+            logger.info("Metrics saved to %s", metrics_path)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Could not write metrics.json: %s", e)
+
     @staticmethod
     def _weighted_sum(
         results: Dict[str, FLModel],
         name: str,
         weights: Dict[str, float],
     ) -> Optional[np.ndarray]:
+        contributors = {
+            c: np.asarray(r.params[name], dtype=np.float32)
+            for c, r in results.items()
+            if name in r.params and weights.get(c, 0.0) != 0.0
+        }
+        if not contributors:
+            return None
+        w_sum = sum(weights[c] for c in contributors)
+        if w_sum <= 0.0:
+            return None
         acc: Optional[np.ndarray] = None
-        for client_name, result in results.items():
-            if name not in result.params:
-                continue
-            w = weights.get(client_name, 0.0)
-            if w == 0.0:
-                continue
-            arr = np.asarray(result.params[name], dtype=np.float32)
+        for c, arr in contributors.items():
+            w = weights[c] / w_sum
             acc = w * arr if acc is None else acc + w * arr
         return acc
 

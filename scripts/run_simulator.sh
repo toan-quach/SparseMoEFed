@@ -14,7 +14,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 JOB_DIR="$1"; shift
-NUM_CLIENTS=2
+NUM_CLIENTS=7
 THREADS=1
 WORKSPACE="/tmp/nvflare/sparsefedmoe"
 
@@ -28,7 +28,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 export SPARSEFEDMOE_DUMMY_MODEL="${SPARSEFEDMOE_DUMMY_MODEL:-1}"
-export SPARSEFEDMOE_DATA="${SPARSEFEDMOE_DATA:-./data}"
+# Resolve to an absolute path: the simulator changes cwd to each site's
+# workspace under $WORKSPACE, so a relative ./data wouldn't find the project's
+# partitions.
+_DEFAULT_DATA_DIR="$(cd "$(dirname "$0")/.." && pwd)/data"
+export SPARSEFEDMOE_DATA="${SPARSEFEDMOE_DATA:-$_DEFAULT_DATA_DIR}"
 export SPARSEFEDMOE_LOCAL_EPOCHS="${SPARSEFEDMOE_LOCAL_EPOCHS:-1}"
 export SPARSEFEDMOE_BATCH_SIZE="${SPARSEFEDMOE_BATCH_SIZE:-2}"
 export SPARSEFEDMOE_MAX_SEQ_LEN="${SPARSEFEDMOE_MAX_SEQ_LEN:-32}"

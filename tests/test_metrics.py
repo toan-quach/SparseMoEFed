@@ -134,22 +134,21 @@ class TestEvaluate:
         # And have run in eval mode inside.
         assert model.last_mode_seen is False
 
-    def test_attention_mask_filters_pad_tokens(self, _trainer_module, monkeypatch):
+    def test_attention_mask_does_not_affect_token_count(self, _trainer_module, monkeypatch):
         monkeypatch.setattr(_trainer_module, "DEVICE", "cpu")
         model = self._tiny_model()
-        # 4 positions, only 2 real.
+        # 4 positions, attention_mask marks only 2 as real — but evaluate()
+        # counts tokens via labels != -100 (matching the model's CE reduction),
+        # so all 4 count.
         batch = {
             "input_ids": torch.zeros(1, 4, dtype=torch.long),
             "labels": torch.zeros(1, 4, dtype=torch.long),
             "attention_mask": torch.tensor([[1, 1, 0, 0]]),
         }
         out = _trainer_module.evaluate(model, [batch])
-        # The model's forward reports n = non-ignored labels = 4 (because all
-        # labels are 0, none are -100). But the token_sum counted by evaluate()
-        # uses the intersection with attention_mask → 2 tokens.
-        # The returned eval_loss is (loss * token_sum) / token_sum where
-        # loss = 4/10 = 0.4 and token_sum = 2, so eval_loss == 0.4.
-        assert out["eval_tokens"] == 2
+        # n_tokens = 4 (all labels != -100). Model loss = 4/10 = 0.4.
+        # eval_loss = (0.4 * 4) / 4 = 0.4.
+        assert out["eval_tokens"] == 4
         assert abs(out["eval_loss"] - 0.4) < 1e-5
 
     def test_perplexity_clamped_on_huge_loss(self, _trainer_module, monkeypatch):

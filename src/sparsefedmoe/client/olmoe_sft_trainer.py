@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Env-driven config ─────────────────────────────────────────────────────────
-MODEL_NAME = os.environ.get("SPARSEFEDMOE_MODEL", "allenai/OLMoE-1B-7B-0924")
+MODEL_NAME = os.path.expanduser(os.environ.get("SPARSEFEDMOE_MODEL", "allenai/OLMoE-1B-7B-0924"))
 DATA_DIR = os.environ.get("SPARSEFEDMOE_DATA", "./data")
 LOCAL_EPOCHS = int(os.environ.get("SPARSEFEDMOE_LOCAL_EPOCHS", "1"))
 BATCH_SIZE = int(os.environ.get("SPARSEFEDMOE_BATCH_SIZE", "2"))
@@ -115,7 +115,7 @@ def _build_dummy_moe_model() -> torch.nn.Module:
         def named_parameters(self, *a, **kw):  # noqa: D401
             return super().named_parameters(*a, **kw)
 
-    return DummyMoE()
+    return DummyMoE().to(DEVICE)
 
 
 def setup_model():
@@ -282,13 +282,12 @@ def evaluate(model, dataloader) -> Optional[Dict[str, float]]:
             labels = batch.get("labels")
             if labels is None:
                 continue
-            # Count real (non-pad, non-ignore) label positions. We treat any
-            # value != -100 and, if present, any position where attention_mask
-            # == 1, as a real token.
-            mask = (labels != -100)
-            if "attention_mask" in batch:
-                mask = mask & batch["attention_mask"].bool()
-            n_tokens = int(mask.sum().item())
+            # Count tokens the same way HF's CE loss does: positions where
+            # labels != -100.  We intentionally do NOT intersect with
+            # attention_mask here — the model's loss already ignores -100
+            # positions, and mixing in a second mask would make our
+            # loss × n_tokens product inconsistent with the model's mean.
+            n_tokens = int((labels != -100).sum().item())
             if n_tokens == 0:
                 continue
             out = model(**batch)
@@ -320,8 +319,12 @@ def main():
     flare.init()
     client_name = flare.get_site_name()
     try:
-        client_id = int(client_name.split("-")[-1])
+        # NVFlare site names are 1-indexed (site-1, site-2, ...) but the data
+        # partitions are 0-indexed (client_0, client_1, ...). Map accordingly.
+        client_id = int(client_name.split("-")[-1]) - 1
     except (ValueError, IndexError):
+        client_id = 0
+    if client_id < 0:
         client_id = 0
     logger.info("Client '%s' (id=%d) starting", client_name, client_id)
 

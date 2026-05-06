@@ -3,9 +3,9 @@ Name: sparsefedmoe
 Version: 0.1.0
 Summary: Communication-efficient federated fine-tuning of MoE LLMs via activation-aware sparse communication (NVFlare).
 Author: SparseFedMoE contributors
-Requires-Python: >=3.10
+Requires-Python: <3.12,>=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: nvflare>=2.4.0
+Requires-Dist: nvflare<2.7,>=2.6
 Requires-Dist: torch>=2.1.0
 Requires-Dist: transformers>=4.40.0
 Requires-Dist: peft>=0.10.0

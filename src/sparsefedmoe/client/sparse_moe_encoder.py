@@ -100,10 +100,15 @@ class SparseMoEEncoder(Filter):
             return shareable
         activation_freq = np.asarray(activation_data["activation_freq"], dtype=np.float64)
 
-        # Pull floor tiers either from FL context (set by a companion task data filter
-        # if present) or from our stashed copy.
+        # Pull floor tiers from (in priority order):
+        #   1. FL context property (set by a companion task data filter if present)
+        #   2. SPARSEFEDMOE_FLOOR_TIERS env var (set by the trainer after receiving
+        #      the server's floor_tiers in FLModel meta — simplest cross-object
+        #      channel under InProcessClientAPIExecutor)
+        #   3. Our stashed copy from a previous update_floor_tiers() call
         floor_from_ctx = fl_ctx.get_prop(_FLOOR_TIERS_CTX_KEY, None)
-        floor_tiers = floor_from_ctx or self._floor_tiers
+        floor_from_env = _parse_floor_tiers_env() if floor_from_ctx is None else None
+        floor_tiers = floor_from_ctx or floor_from_env or self._floor_tiers
 
         # ── Split expert vs shared params ──
         params = dxo.data
@@ -157,3 +162,17 @@ class SparseMoEEncoder(Filter):
         self._floor_tiers = {
             (int(l), int(e)): str(tier) for (l, e, tier) in (floor_entries or [])
         }
+
+
+def _parse_floor_tiers_env() -> Dict[Tuple[int, int], str]:
+    """Decode the ``SPARSEFEDMOE_FLOOR_TIERS`` env var written by the trainer."""
+    import os
+    raw = os.environ.get("SPARSEFEDMOE_FLOOR_TIERS", "")
+    if not raw:
+        return {}
+    tiers: Dict[Tuple[int, int], str] = {}
+    for entry in raw.split(";"):
+        parts = entry.split(",")
+        if len(parts) == 3:
+            tiers[(int(parts[0]), int(parts[1]))] = parts[2]
+    return tiers

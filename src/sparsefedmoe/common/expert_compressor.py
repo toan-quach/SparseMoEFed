@@ -186,6 +186,23 @@ class ExpertCompressor:
 
     @staticmethod
     def _quantize_int8(tensor: torch.Tensor) -> Dict[str, Any]:
+        # The problem: Symmetric INT8 quantization maps [-max_val, +max_val] to [-127, +127]. 
+        # The scale factor is max_val / 127. If the tensor is near-zero (e.g., an expert that 
+        # barely trained this round, or an EF21 residual that's nearly converged), max_val ≈ 0 
+        # and scale ≈ 0.
+        # 
+        # Without the fix: Division by scale in the quantization step (flat / scale) produces 
+        # inf or nan. Those corrupted INT8 values travel to the server, get dequantized as garbage, 
+        # and pollute the global expert weights. One near-zero expert delta could corrupt the entire 
+        # expert.
+        # 
+        # Why 1e-10: It's effectively saying "if the delta is smaller than 1e-10 in magnitude, 
+        # treat it as if the largest value is 1e-10." The quantized result will be all zeros 
+        # (since tiny_value / 1e-10 rounds to 0 in int8), which is the correct semantic, the 
+        # delta was negligible, so transmit nothing. The torch.clamp(..., -127, 127) on the next line 
+        # is a belt-and-suspenders guard ensuring the INT8 range is respected even if floating-point 
+        # arithmetic produces values slightly outside bounds.
+
         flat = tensor.detach().float().flatten()
         scale = flat.abs().max() / 127.0
         if scale < 1e-10:

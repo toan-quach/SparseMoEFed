@@ -48,6 +48,25 @@ class GlobalFloorMonitor:
         """
         if len(client_profiles) < self.min_clients:
             # Not enough signal — keep the prior floor set so protection persists.
+            # The problem: The Global Floor Monitor (section 3.5) identifies under-utilized 
+            # experts and protects them by promoting their compression tier from SKIP to INT8. 
+            # It needs a representative sample of client activation profiles to compute global 
+            # frequency. If only 1 client reports in a round (maybe others timed out or 
+            # disconnected), the "global" frequency is really just one client's local frequency
+            # highly noisy.
+            # 
+            # Without the fix: The floor set would swing wildly round-to-round based on whichever 
+            # subset of clients happened to respond. An expert that genuinely needs protection 
+            # could lose it because the one client that responded happened to use different experts. 
+            # Then that expert gets SKIPped by all clients next round, its weights stagnate, and it 
+            # may never recover — this is the "expert collapse" problem the floor monitor exists to 
+            # prevent.
+            # 
+            # The design: Return the previous floor set unchanged. Protection persists even during 
+            # low-turnout rounds. The min_clients default of 2 means you need at least two independent 
+            # views before the monitor updates its beliefs. The _history deque (used in stability_report()) 
+            # lets operators see churn — if the floor set is changing every round, something is wrong.
+            
             return dict(self._last)
 
         stack = np.stack([np.asarray(p) for p in client_profiles.values()], axis=0)

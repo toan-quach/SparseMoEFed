@@ -28,6 +28,9 @@ class SparseFedMoEConfig:
     floor_gamma: float = 0.10
     floor_min_clients: int = 2  # don't compute floor with < N client reports
 
+    # ── Frequency-weighted expert aggregation (§3.3) ──
+    use_freq_weighted_experts: bool = True
+
     # ── Alignment-weighted router aggregation (§3.4) ──
     use_router_alignment: bool = True
     tau_active: float = 0.01  # expert is "active" on a client if freq ≥ this
