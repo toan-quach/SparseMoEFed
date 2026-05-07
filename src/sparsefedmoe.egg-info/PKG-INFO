@@ -15,6 +15,8 @@ Requires-Dist: numpy>=1.24
 Provides-Extra: dev
 Requires-Dist: pytest>=7.4; extra == "dev"
 Requires-Dist: pytest-xdist>=3.5; extra == "dev"
+Provides-Extra: viz
+Requires-Dist: matplotlib>=3.7; extra == "viz"
 
 # SparseFedMoE
 
@@ -35,18 +37,23 @@ tests/        # Unit tests for each component
 
 ## Install
 
+Requires Python 3.11 (NVFlare 2.6 supports 3.9–3.12, but the project pins 3.11 for reproducibility).
+
 ```bash
-pip install -e .
+uv venv --python 3.11
+uv pip install -e .
 ```
 
-The `jobs/*/app/custom/sparsefedmoe` entries are symlinks to `src/sparsefedmoe/`, so NVFlare's
-`path:` references resolve both via the installed package and via the job's `custom/` directory.
+The editable install places `sparsefedmoe` on the venv's import path, which is how NVFlare's
+class-loader resolves `path:` references like `sparsefedmoe.server.freq_weighted_controller.FreqWeightedFedAvg`
+in the job configs. Each job's `app/custom/olmoe_sft_trainer.py` is a small shim that the
+in-process client API runner executes, which then imports the trainer's `main()` from the package.
 
 ## Quickstart
 
 ```bash
 # 1. Partition data (domain-skewed, 2 clients for local dev)
-python scripts/prepare_data.py --num_clients 2 --strategy domain --output_dir ./data
+python scripts/prepare_data.py --num_clients 7 --strategy domain --output_dir ./data
 
 # 2. Smoke test the sparse job with 2 simulated clients
 bash scripts/run_simulator.sh jobs/sparsefedmoe_olmoe -n 2

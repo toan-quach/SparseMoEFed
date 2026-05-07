@@ -24,6 +24,9 @@ dev = [
     "pytest>=7.4",
     "pytest-xdist>=3.5",
 ]
+viz = [
+    "matplotlib>=3.7",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

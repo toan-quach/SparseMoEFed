@@ -9,3 +9,6 @@ numpy>=1.24
 [dev]
 pytest>=7.4
 pytest-xdist>=3.5
+
+[viz]
+matplotlib>=3.7

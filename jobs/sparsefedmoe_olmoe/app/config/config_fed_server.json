@@ -1,0 +1,46 @@
+{
+  "format_version": 2,
+  "num_rounds": 2,
+  "workflows": [
+    {
+      "id": "freq_weighted_fedavg",
+      "path": "sparsefedmoe.server.freq_weighted_controller.FreqWeightedFedAvg",
+      "args": {
+        "num_clients": 7,
+        "num_rounds": 2,
+        "min_clients": 2,
+        "persistor_id": "persistor",
+        "config": {
+          "tau_skip": 0.005,
+          "tau_high": 0.05,
+          "use_error_feedback": true,
+          "ef_flush_threshold": 0.0,
+          "use_floor": true,
+          "floor_gamma": 0.10,
+          "floor_min_clients": 2,
+          "use_router_alignment": true,
+          "tau_active": 0.01
+        }
+      }
+    }
+  ],
+  "task_result_filters": [
+    {
+      "tasks": ["*"],
+      "filters": [
+        {
+          "path": "sparsefedmoe.client.sparse_moe_decoder.SparseMoEDecoder",
+          "args": {}
+        }
+      ]
+    }
+  ],
+  "task_data_filters": [],
+  "components": [
+    {
+      "id": "persistor",
+      "path": "nvflare.app_opt.pt.file_model_persistor.PTFileModelPersistor",
+      "args": {}
+    }
+  ]
+}

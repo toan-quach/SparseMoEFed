@@ -1,0 +1,35 @@
+{
+  "format_version": 2,
+  "executors": [
+    {
+      "tasks": ["*"],
+      "executor": {
+        "path": "nvflare.app_common.executors.in_process_client_api_executor.InProcessClientAPIExecutor",
+        "args": {
+          "task_script_path": "olmoe_sft_trainer.py",
+          "task_script_args": ""
+        }
+      }
+    }
+  ],
+  "task_result_filters": [
+    {
+      "tasks": ["*"],
+      "filters": [
+        {
+          "path": "sparsefedmoe.client.sparse_moe_encoder.SparseMoEEncoder",
+          "args": {
+            "config": {
+              "tau_skip": 0.005,
+              "tau_high": 0.05,
+              "use_error_feedback": true,
+              "ef_flush_threshold": 0.0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "task_data_filters": [],
+  "components": []
+}

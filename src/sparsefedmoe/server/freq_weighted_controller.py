@@ -174,6 +174,10 @@ class FreqWeightedFedAvg(ModelController):
             if self.floor_monitor is not None:
                 fl = self.floor_monitor.get_floor_tier_list()
                 round_record["floor_protected_experts"] = len(fl) if fl else 0
+            if self.client_profiles:
+                round_record["activation_profiles"] = {
+                    c: prof.tolist() for c, prof in self.client_profiles.items()
+                }
             self.round_metrics.append(round_record)
 
             # Update floor monitor from this round's profiles.
