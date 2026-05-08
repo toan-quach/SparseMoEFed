@@ -7,9 +7,10 @@
       "path": "sparsefedmoe.server.freq_weighted_controller.FreqWeightedFedAvg",
       "args": {
         "num_clients": 7,
-        "num_rounds": 2,
-        "min_clients": 2,
+        "num_rounds": 1,
+        "min_clients": 1,
         "persistor_id": "persistor",
+        "task_timeout": 1800,
         "config": {
           "tau_skip": 0.0,
           "tau_high": 0.0,

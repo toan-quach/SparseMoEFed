@@ -44,6 +44,7 @@ class FreqWeightedFedAvg(ModelController):
         num_rounds: int = 50,
         min_clients: int = 2,
         persistor_id: str = "persistor",
+        task_timeout: int = 1800,
         config: Optional[Dict[str, Any]] = None,
     ):
         # Clients build their own model and seed the first round's params, so
@@ -52,6 +53,7 @@ class FreqWeightedFedAvg(ModelController):
         self.num_clients = num_clients
         self.num_rounds = num_rounds
         self.min_clients = min_clients
+        self.task_timeout = task_timeout
         self.persistor_id = persistor_id
         self.cfg = SparseFedMoEConfig.from_dict(config or {})
 
@@ -100,6 +102,7 @@ class FreqWeightedFedAvg(ModelController):
 
             result_list = self.send_model_and_wait(
                 targets=None, data=model, min_responses=self.min_clients,
+                timeout=self.task_timeout,
             )
             if not result_list or len(result_list) < self.min_clients:
                 got = len(result_list) if result_list else 0

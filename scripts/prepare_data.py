@@ -33,14 +33,14 @@ from datasets import Dataset, load_dataset
 # ``field_map``: renames non-standard columns to the canonical names that
 #   ``_format_example`` understands, applied *before* formatting.
 DATASET_SOURCES = [
-    {"name": "tatsu-lab/alpaca", "domain": "general"},
-    {"name": "gbharti/finance-alpaca", "domain": "finance"},
-    {"name": "sahil2801/code_alpaca-20k", "domain": "code"},
-    {"name": "medalpaca/medical_meadow_medical_flashcards", "domain": "medical"},
-    {"name": "gsm8k", "domain": "reasoning", "config": "main"},
-    {"name": "jonathanli/law-stack-exchange", "domain": "legal",
+    {"name": "../SparseFedMoE_baseline/dataset/tatsu-lab/alpaca", "domain": "general"},
+    {"name": "../SparseFedMoE_baseline/dataset/gbharti/finance-alpaca", "domain": "finance"},
+    {"name": "../SparseFedMoE_baseline/dataset/sahil2801/code_alpaca-20k", "domain": "code"},
+    {"name": "../SparseFedMoE_baseline/dataset/medalpaca/medical_meadow_medical_flashcards", "domain": "medical"},
+    {"name": "../SparseFedMoE_baseline/dataset/gsm8k", "domain": "reasoning", "config": "main"},
+    {"name": "../SparseFedMoE_baseline/dataset/jonathanli/law-stack-exchange", "domain": "legal",
      "field_map": {"title": "instruction", "body": "input"}},
-    {"name": "databricks/databricks-dolly-15k", "domain": "creative"},
+    {"name": "../SparseFedMoE_baseline/dataset/databricks/databricks-dolly-15k", "domain": "creative"},
 ]
 
 

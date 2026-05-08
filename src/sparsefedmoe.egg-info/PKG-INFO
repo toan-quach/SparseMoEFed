@@ -73,6 +73,38 @@ bash scripts/run_simulator.sh jobs/fedavg_olmoe -n 2
 | 3.5 | `server/global_floor_monitor.py`                  |
 | 3.6 | `common/client_clusterer.py` (optional, disabled in default jobs) |
 
+## Visualization
+
+Install the optional `viz` dependencies, then use `scripts/plot_activation.py` to generate
+activation frequency figures from a completed run.
+
+```bash
+uv pip install -e ".[viz]"
+```
+
+**From an NVFlare run** (reads `metrics.json` written by the controller):
+
+```bash
+# All figures (grid heatmap + per-client heatmaps + timeline)
+python scripts/plot_activation.py /tmp/nvflare/sparsefedmoe/server/simulate_job/metrics.json --out ./figures
+
+# Specific round only
+python scripts/plot_activation.py /tmp/nvflare/sparsefedmoe/server/simulate_job/metrics.json --round 1 --out ./figures
+
+# Timeline only (expert frequency drift across rounds)
+python scripts/plot_activation.py /tmp/nvflare/sparsefedmoe/server/simulate_job/metrics.json --type timeline --out ./figures
+```
+
+**From local single-client runs** (reads JSON from `run_local_sft_with_activation.py`):
+
+```bash
+SPARSEFEDMOE_DUMMY_MODEL=1 python scripts/run_local_sft_with_activation.py --client_id 0 --out /tmp/act0.json
+SPARSEFEDMOE_DUMMY_MODEL=1 python scripts/run_local_sft_with_activation.py --client_id 1 --out /tmp/act1.json
+python scripts/plot_activation.py /tmp/act0.json /tmp/act1.json --out ./figures
+```
+
+Figure types: `heatmap` (single client), `grid` (all clients side-by-side), `timeline` (per-expert frequency over rounds), or `all` (default).
+
 ## Tests
 
 ```bash

@@ -2,8 +2,9 @@
 
 Runs under NVFlare's ScriptExecutor. Loads OLMoE (or any HF MoE model whose
 config exposes ``num_experts`` / ``num_experts_per_tok`` and whose MoE blocks
-return ``(hidden, router_logits)``), applies LoRA to the expert FFNs + attention
-+ router, does ``LOCAL_EPOCHS`` of SFT, and emits an FLModel whose ``meta``
+return ``(hidden, router_logits)``), applies LoRA to configurable modules
+(default: shared attention) with optional full-rank training of expert FFNs
+and router gate, does ``LOCAL_EPOCHS`` of SFT, and emits an FLModel whose ``meta``
 includes the per-expert activation profile for the server to consume.
 
 All config lives in env vars so the same script works under both dev (tiny
@@ -45,6 +46,18 @@ BATCH_SIZE = int(os.environ.get("SPARSEFEDMOE_BATCH_SIZE", "2"))
 LEARNING_RATE = float(os.environ.get("SPARSEFEDMOE_LR", "2e-4"))
 MAX_SEQ_LEN = int(os.environ.get("SPARSEFEDMOE_MAX_SEQ_LEN", "256"))
 LORA_RANK = int(os.environ.get("SPARSEFEDMOE_LORA_RANK", "16"))
+# NOTE: LORA_TARGETS controls which modules get LoRA adapters.
+# Default: shared attention only (q_proj, k_proj, v_proj, o_proj).
+# Expert FFN modules are: gate_proj, up_proj, down_proj. To also apply
+# LoRA to expert FFNs, append them:
+#   SPARSEFEDMOE_LORA_TARGETS=q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
+# TRAIN_EXPERTS / TRAIN_ROUTER control full-rank training of expert FFNs
+# and the MoE router gate respectively. When both LoRA and full-rank are
+# enabled for the same module, it becomes dual-mode (LoRA adapters + base
+# weight gradients) — valid but more memory-intensive.
+LORA_TARGETS = os.environ.get("SPARSEFEDMOE_LORA_TARGETS", "q_proj,k_proj,v_proj,o_proj")
+TRAIN_EXPERTS_FULL_RANK = os.environ.get("SPARSEFEDMOE_TRAIN_EXPERTS", "1") == "1"
+TRAIN_ROUTER_FULL_RANK = os.environ.get("SPARSEFEDMOE_TRAIN_ROUTER", "1") == "1"
 DUMMY_MODEL = os.environ.get("SPARSEFEDMOE_DUMMY_MODEL", "0") == "1"
 # Fraction of each client's dataset held out for per-round eval (perplexity /
 # eval_loss). Set to 0.0 to disable eval (e.g. to reproduce the old behaviour).
@@ -119,9 +132,9 @@ def _build_dummy_moe_model() -> torch.nn.Module:
 
 
 def setup_model():
-    if DUMMY_MODEL:
-        logger.info("Using dummy MoE model (SPARSEFEDMOE_DUMMY_MODEL=1)")
-        return _build_dummy_moe_model()
+    # if DUMMY_MODEL:
+    #     logger.info("Using dummy MoE model (SPARSEFEDMOE_DUMMY_MODEL=1)")
+    #     return _build_dummy_moe_model()
 
     logger.info("Loading model: %s", MODEL_NAME)
     cfg = AutoConfig.from_pretrained(MODEL_NAME)
@@ -139,17 +152,70 @@ def setup_model():
     # Optional LoRA — skipped on CPU-only dev runs to keep the smoke test fast.
     try:
         from peft import LoraConfig, TaskType, get_peft_model  # type: ignore
+
+        lora_target_modules = [m.strip() for m in LORA_TARGETS.split(",") if m.strip()]
         lora = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
-            r=LORA_RANK, lora_alpha=32, lora_dropout=0.05,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                            "gate_proj", "up_proj", "down_proj"],
-            modules_to_save=["gate"],
+            r=LORA_RANK, lora_alpha=32, lora_dropout=0.0,
+            target_modules=lora_target_modules,
         )
         model = get_peft_model(model, lora)
-        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        total = sum(p.numel() for p in model.parameters())
-        logger.info("LoRA: %d trainable / %d total", trainable, total)
+        logger.info("LoRA targets: %s", lora_target_modules)
+
+        # Unfreeze expert FFN base weights for full-rank training.
+        if TRAIN_EXPERTS_FULL_RANK:
+            n_unfrozen = 0
+            for name, param in model.named_parameters():
+                if "experts" in name and "lora_" not in name:
+                    param.requires_grad = True
+                    n_unfrozen += 1
+            logger.info("Unfroze %d expert FFN params for full-rank training", n_unfrozen)
+
+        # Unfreeze router gate weights for full-rank training.
+        if TRAIN_ROUTER_FULL_RANK:
+            for name, param in model.named_parameters():
+                if "mlp.gate" in name and "gate_proj" not in name and "experts" not in name:
+                    param.requires_grad = True
+                    logger.info("Unfroze router param: %s", name)
+
+        # Summarise what is trainable and how.
+        lora_params, full_rank_params, frozen_params = 0, 0, 0
+        categories = {"shared_lora": 0, "expert_lora": 0, "expert_full": 0,
+                       "router_full": 0, "other": 0}
+        for name, param in model.named_parameters():
+            n = param.numel()
+            is_lora = "lora_" in name
+            is_expert = "experts" in name
+            is_router = ("mlp.gate" in name and "gate_proj" not in name
+                         and "experts" not in name)
+            if not param.requires_grad:
+                frozen_params += n
+                continue
+            if is_lora:
+                lora_params += n
+                categories["expert_lora" if is_expert else "shared_lora"] += n
+            else:
+                full_rank_params += n
+                if is_expert:
+                    categories["expert_full"] += n
+                elif is_router:
+                    categories["router_full"] += n
+                else:
+                    categories["other"] += n
+
+        total = lora_params + full_rank_params + frozen_params
+        trainable = lora_params + full_rank_params
+        logger.info("─── Training configuration ───")
+        logger.info("  LoRA targets:        %s (rank=%d)", lora_target_modules, LORA_RANK)
+        logger.info("  Shared attn (LoRA):  %s params", f"{categories['shared_lora']:,}")
+        logger.info("  Expert FFN  (LoRA):  %s params", f"{categories['expert_lora']:,}")
+        logger.info("  Expert FFN  (full):  %s params", f"{categories['expert_full']:,}")
+        logger.info("  Router gate (full):  %s params", f"{categories['router_full']:,}")
+        if categories["other"]:
+            logger.info("  Other       (full):  %s params", f"{categories['other']:,}")
+        logger.info("  Trainable: %s / %s (%.1f%%)",
+                     f"{trainable:,}", f"{total:,}", 100 * trainable / total)
+        logger.info("  Frozen:    %s", f"{frozen_params:,}")
     except Exception as e:  # noqa: BLE001
         logger.warning("LoRA setup skipped (%s); training full model.", e)
 
@@ -364,6 +430,7 @@ def main():
     logger.info("Data split: train=%d eval=%d", len(train_ds), n_eval)
 
     tracker = ActivationTracker(_unwrap_for_tracker(model))
+    print(f"[DIAG] tracker shape: ({tracker.num_layers}, {tracker.num_experts}), top_k={tracker.top_k}", flush=True)
 
     while flare.is_running():
         input_model = flare.receive()

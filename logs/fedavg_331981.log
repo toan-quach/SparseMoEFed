@@ -1,0 +1,49 @@
+─── NVFlare simulator ───
+  job:       jobs/fedavg_olmoe
+  clients:   1
+  threads:   1
+  workspace: /home/fit/qianxueh/WORK/alchem/gfq/SparseMoEFed/workspace
+  dummy:     0
+[38m2026-05-08 15:55:55,499 - PTFileModelPersistor - INFO - Both source_ckpt_file_full_name and ckpt_preload_path are not provided. Using the default model weights initialized on the persistor side.[0m
+[38m2026-05-08 15:55:58,650 - TaskScriptRunner - INFO - start task run() with full path: /home/fit/qianxueh/WORK/alchem/gfq/SparseMoEFed/workspace/site-1/simulate_job/app_site-1/custom/olmoe_sft_trainer.py[0m
+[38m2026-05-08 15:55:58,659 - InProcessClientAPIExecutor - INFO - execute for task (train)[0m
+[38m2026-05-08 15:55:58,659 - InProcessClientAPIExecutor - INFO - send data to peer[0m
+[38m2026-05-08 15:55:58,660 - InProcessClientAPIExecutor - INFO - sending payload to peer[0m
+[38m2026-05-08 15:55:58,662 - InProcessClientAPIExecutor - INFO - Waiting for result from peer[0m
+Loading weights:   0%|          | 0/179 [00:00<?, ?it/s]Loading weights:   2%|▏         | 4/179 [00:00<00:15, 10.95it/s]Loading weights:   3%|▎         | 6/179 [00:00<00:30,  5.76it/s]Loading weights:   8%|▊         | 15/179 [00:01<00:10, 15.68it/s]Loading weights:  10%|█         | 18/179 [00:01<00:15, 10.25it/s]Loading weights:  15%|█▍        | 26/179 [00:01<00:09, 16.84it/s]Loading weights:  16%|█▌        | 29/179 [00:02<00:12, 12.19it/s]Loading weights:  21%|██        | 37/179 [00:02<00:07, 18.09it/s]Loading weights:  22%|██▏       | 40/179 [00:03<00:10, 12.83it/s]Loading weights:  27%|██▋       | 48/179 [00:03<00:07, 18.49it/s]Loading weights:  28%|██▊       | 51/179 [00:03<00:09, 13.52it/s]Loading weights:  33%|███▎      | 59/179 [00:03<00:06, 19.28it/s]Loading weights:  35%|███▌      | 63/179 [00:04<00:06, 16.86it/s]Loading weights:  40%|███▉      | 71/179 [00:04<00:05, 21.28it/s]Loading weights:  46%|████▌     | 82/179 [00:04<00:03, 28.27it/s]Loading weights:  52%|█████▏    | 93/179 [00:04<00:02, 33.71it/s]Loading weights:  58%|█████▊    | 104/179 [00:05<00:01, 37.92it/s]Loading weights:  64%|██████▍   | 115/179 [00:05<00:01, 40.95it/s]Loading weights:  70%|███████   | 126/179 [00:05<00:01, 43.33it/s]Loading weights:  77%|███████▋  | 137/179 [00:05<00:00, 44.99it/s]Loading weights:  83%|████████▎ | 148/179 [00:06<00:00, 46.20it/s]Loading weights:  89%|████████▉ | 159/179 [00:06<00:00, 47.07it/s]Loading weights:  95%|█████████▍| 170/179 [00:06<00:00, 47.77it/s]Loading weights: 100%|██████████| 179/179 [00:06<00:00, 27.56it/s]
+[38m2026-05-08 15:56:11,349 - TaskScriptRunner - INFO -               0 COPY_FREE_VARS           1[0m
+[38m2026-05-08 15:56:11,350 - TaskScriptRunner - INFO - [0m
+[38m2026-05-08 15:56:11,351 - TaskScriptRunner - INFO - 239           2 RESUME                   0[0m
+[38m2026-05-08 15:56:11,351 - TaskScriptRunner - INFO - [0m
+[38m2026-05-08 15:56:11,351 - TaskScriptRunner - INFO - 240           4 PUSH_NULL[0m
+[38m2026-05-08 15:56:11,351 - TaskScriptRunner - INFO -               6 LOAD_DEREF               2 (tokenizer)[0m
+[38m2026-05-08 15:56:11,351 - TaskScriptRunner - INFO - [0m
+[38m2026-05-08 15:56:11,351 - TaskScriptRunner - INFO - 241           8 LOAD_FAST                0 (ex)[0m
+[38m2026-05-08 15:56:11,352 - TaskScriptRunner - INFO -              10 LOAD_CONST               1 ('text')[0m
+[38m2026-05-08 15:56:11,352 - TaskScriptRunner - INFO -              12 BINARY_SUBSCR[0m
+[38m2026-05-08 15:56:11,352 - TaskScriptRunner - INFO -              22 LOAD_CONST               2 (True)[0m
+[38m2026-05-08 15:56:11,352 - TaskScriptRunner - INFO -              24 LOAD_GLOBAL              0 (MAX_SEQ_LEN)[0m
+[38m2026-05-08 15:56:11,352 - TaskScriptRunner - INFO - [0m
+[38m2026-05-08 15:56:11,352 - TaskScriptRunner - INFO - 242          36 LOAD_CONST               3 ('max_length')[0m
+[38m2026-05-08 15:56:11,352 - TaskScriptRunner - INFO -              38 LOAD_CONST               4 ('np')[0m
+[38m2026-05-08 15:56:11,353 - TaskScriptRunner - INFO - [0m
+[38m2026-05-08 15:56:11,353 - TaskScriptRunner - INFO - 240          40 KW_NAMES                 5[0m
+[38m2026-05-08 15:56:11,353 - TaskScriptRunner - INFO -              42 PRECALL                  5[0m
+[38m2026-05-08 15:56:11,353 - TaskScriptRunner - INFO -              46 CALL                     5[0m
+[38m2026-05-08 15:56:11,353 - TaskScriptRunner - INFO -              56 STORE_FAST               1 (out)[0m
+[38m2026-05-08 15:56:11,353 - TaskScriptRunner - INFO - [0m
+[38m2026-05-08 15:56:11,354 - TaskScriptRunner - INFO - 244          58 LOAD_FAST                1 (out)[0m
+[38m2026-05-08 15:56:11,354 - TaskScriptRunner - INFO -              60 LOAD_CONST               6 ('input_ids')[0m
+[38m2026-05-08 15:56:11,354 - TaskScriptRunner - INFO -              62 BINARY_SUBSCR[0m
+[38m2026-05-08 15:56:11,354 - TaskScriptRunner - INFO -              72 LOAD_METHOD              1 (copy)[0m
+[38m2026-05-08 15:56:11,354 - TaskScriptRunner - INFO -              94 PRECALL                  0[0m
+[38m2026-05-08 15:56:11,354 - TaskScriptRunner - INFO -              98 CALL                     0[0m
+[38m2026-05-08 15:56:11,354 - TaskScriptRunner - INFO -             108 LOAD_FAST                1 (out)[0m
+[38m2026-05-08 15:56:11,355 - TaskScriptRunner - INFO -             110 LOAD_CONST               7 ('labels')[0m
+[38m2026-05-08 15:56:11,355 - TaskScriptRunner - INFO -             112 STORE_SUBSCR[0m
+[38m2026-05-08 15:56:11,355 - TaskScriptRunner - INFO - [0m
+[38m2026-05-08 15:56:11,355 - TaskScriptRunner - INFO - 245         116 LOAD_FAST                1 (out)[0m
+[38m2026-05-08 15:56:11,355 - TaskScriptRunner - INFO -             118 RETURN_VALUE[0m
+[38m2026-05-08 15:56:11,623 - TaskScriptRunner - INFO - [DIAG] tracker shape: (16, 64), top_k=8[0m
+[33m2026-05-08 16:04:52,220 - InProcessClientAPI - WARNING - ask to stop job: reason: END_RUN received[0m
+[33m2026-05-08 16:04:52,484 - InProcessClientAPI - WARNING - request to stop the job for reason END_RUN received[0m

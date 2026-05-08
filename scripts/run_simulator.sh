@@ -28,11 +28,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 export SPARSEFEDMOE_DUMMY_MODEL="${SPARSEFEDMOE_DUMMY_MODEL:-1}"
-# Resolve to an absolute path: the simulator changes cwd to each site's
-# workspace under $WORKSPACE, so a relative ./data wouldn't find the project's
-# partitions.
+# Resolve to absolute paths: the simulator changes cwd to each site's
+# workspace under $WORKSPACE, so relative paths wouldn't resolve correctly.
 _DEFAULT_DATA_DIR="$(cd "$(dirname "$0")/.." && pwd)/data"
 export SPARSEFEDMOE_DATA="${SPARSEFEDMOE_DATA:-$_DEFAULT_DATA_DIR}"
+if [[ -n "${SPARSEFEDMOE_MODEL:-}" && -e "$SPARSEFEDMOE_MODEL" ]]; then
+  export SPARSEFEDMOE_MODEL="$(cd "$(dirname "$SPARSEFEDMOE_MODEL")" && pwd)/$(basename "$SPARSEFEDMOE_MODEL")"
+fi
 export SPARSEFEDMOE_LOCAL_EPOCHS="${SPARSEFEDMOE_LOCAL_EPOCHS:-1}"
 export SPARSEFEDMOE_BATCH_SIZE="${SPARSEFEDMOE_BATCH_SIZE:-2}"
 export SPARSEFEDMOE_MAX_SEQ_LEN="${SPARSEFEDMOE_MAX_SEQ_LEN:-32}"
@@ -44,6 +46,18 @@ echo "  threads:   $THREADS"
 echo "  workspace: $WORKSPACE"
 echo "  dummy:     $SPARSEFEDMOE_DUMMY_MODEL"
 mkdir -p "$WORKSPACE"
+mkdir -p "$WORKSPACE/local"
+
+cat > "$WORKSPACE/local/resources.json" <<'EOF'
+{
+  "client": {
+    "communication_timeout": 1800
+  },
+  "server": {
+    "communication_timeout": 1800
+  }
+}
+EOF
 
 nvflare simulator \
   "$JOB_DIR" \
